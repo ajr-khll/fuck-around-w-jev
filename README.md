@@ -34,6 +34,14 @@ Playwright screenshot  ->  vision.py  ->  17x15 text grid  ->  Jev  ->  arrow ke
 | `snake/jev.py` | Turns a grid into `state` + questions, asks Jev |
 | `snake/play.py` | The loop, and the run transcript |
 
+### Knowing which way it is going
+
+The heading is never read off the screen. The snake travels whichever way it was
+last steered — and right, before it has been steered at all. The single press that
+changes nothing is a reversal: the game refuses it and the snake carries on as it
+was (verified, not assumed). So the heading is exact, and each request tells Jev
+which of the four options the game is going to refuse.
+
 ### No safety net
 
 Jev's answer is sent to the keyboard unmodified. Nothing here checks whether the move
@@ -58,10 +66,49 @@ python3 -m venv .venv
 
 echo 'TYPESAFE_API_KEY=your-key-here' > .env   # from https://console.typesafe.ai/
 
-.venv/bin/python -m snake.play                 # watch it play
-.venv/bin/python -m snake.play --headless --max-turns 50
-.venv/bin/python -m snake.play --speed 1.0     # full speed, for the carnage
+.venv/bin/python -m snake.play                 # one game, in a window you can watch
+.venv/bin/python -m snake.play --games 8        # eight games, same window
+.venv/bin/python -m snake.play --headless       # no window, runs faster
+.venv/bin/python -m snake.play --speed 1.0      # full speed, for the carnage
+.venv/bin/python -m snake.play --record         # write an mp4 of the game
 ```
 
+Games run back to back in a single window, because the menu after a death has the
+same Play button the first one did.
+
 Each run writes to `runs/`: a JSONL transcript with every board, move, probability
-distribution and latency, a summary, and a final screenshot.
+distribution, heading and latency, a summary, and a screenshot of each game's end.
+
+## Recording it
+
+`--record` writes an mp4 next to the transcript, with a panel beside the board
+showing the text grid Jev is actually reading, its probability across the four
+directions, and how long each decision took. Directions it flagged as fatal turn
+red.
+
+The game is played in slow motion so Jev has time to answer, and the video is sped
+back up by the same factor — so the snake moves at its normal pace while every
+decision on screen is one Jev really made. Output is H.264 / yuv420p with the moov
+atom up front, which is what X and most players want.
+
+[`jev-plays-snake.mp4`](jev-plays-snake.mp4) — 157 turns, 13 apples.
+
+## How well does it play?
+
+Over eight games, with no safety net and nothing but the text grid to go on:
+
+| | |
+| --- | --- |
+| Best snake | **16** (12 apples) |
+| Median snake | 7.5 |
+| Median turns survived | 49.5 |
+| Median decision latency | 160 ms |
+
+Two perception bugs cost far more than the model ever did. A cell the snake was only
+*animating into* counted as its body, which put a phantom obstacle directly in front
+of the head on every frame; and tracking the head by its sprite drifted onto body
+cells with no way back. Fixing those roughly doubled the median.
+
+What kills it now is not walls but **enclosure** — it coils and runs out of room.
+Jev is answering one question about one tick, with no memory of the shape it has
+been building.

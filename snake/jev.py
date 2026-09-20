@@ -18,6 +18,8 @@ DIRECTIONS = ("up", "down", "left", "right")
 # Which way each direction moves the head on the grid.
 STEPS = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}
 
+OPPOSITE = {"up": "down", "down": "up", "left": "right", "right": "left"}
+
 MOVE_CRITERIA = {
     "up": "Move the head one row up, from row r to row r-1. Row 0 is the top.",
     "down": f"Move the head one row down, from row r to row r+1. Row {ROWS - 1} is the bottom.",
@@ -61,12 +63,30 @@ def describe(grid: Grid, heading: str) -> dict:
         "head": {"row": head_row, "column": head_col},
         "apple": {"row": apple_row, "column": apple_col},
         "current_heading": heading,
+        "move_the_game_will_refuse": OPPOSITE[heading],
         "snake_length": len(grid.occupied()),
         "rules": RULES,
     }
 
 
-def _questions() -> dict:
+def _move_criteria(heading: str) -> dict[str, str]:
+    """The four options, with the one the game will refuse marked as such.
+
+    Turning back on itself is the one move Snake ignores: the key press is
+    dropped and the snake carries on the way it was already going. Jev can
+    still choose it - nothing here overrides the answer - but it should know
+    that choosing it means not steering at all.
+    """
+    criteria = dict(MOVE_CRITERIA)
+    reverse = OPPOSITE[heading]
+    criteria[reverse] += (
+        f" The snake is currently heading {heading}, so this reverses it. The game "
+        f"refuses this: the snake keeps going {heading} and the turn is wasted."
+    )
+    return criteria
+
+
+def _questions(heading: str) -> dict:
     """One question that steers, plus four that only get logged.
 
     Jev evaluates every question in a request in parallel against the same
@@ -81,7 +101,7 @@ def _questions() -> dict:
                 "steer into a wall or into the snake's own body. While you are safe, "
                 "move so the head gets closer to the apple marked A."
             ),
-            criteria=MOVE_CRITERIA,
+            criteria=_move_criteria(heading),
         )
     }
     for direction in DIRECTIONS:
@@ -90,7 +110,10 @@ def _questions() -> dict:
                 f"If the snake in `board` moves {direction} on this tick, does it die "
                 "by leaving the board or by entering a cell its own body occupies?"
             ),
-            criteria={"yes": "The move kills the snake.", "no": "The move is survivable."},
+            criteria={
+                "true": "The move kills the snake.",
+                "false": "The move is survivable.",
+            },
         )
     return questions
 
@@ -104,7 +127,7 @@ class JevPlayer:
     def decide(self, grid: Grid, heading: str) -> Decision:
         response = self.client.system_one(
             state=describe(grid, heading),
-            questions=_questions(),
+            questions=_questions(heading),
         )
         move = response.answers["move"]
         return Decision(
